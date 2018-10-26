@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 # --------------------------------------------------------
 # Module Name : terraHouat  power recording Redfish daemon
-# Version : 1.0
+# Version : 1.1
 #
 # Software Name : Open NFV functest
 # Version :
@@ -21,6 +21,7 @@
 # -------------------------------------------------------
 # History     :
 # 1.0.0 - 2017-02-20 : Release of the file
+# 1.1.0 - 2018-10-26 : Add feature to synchronize polling of different threads
 #
 
 """Collect power comsumption via redfish API."""
@@ -44,7 +45,9 @@ class RedfishCollector(Thread):
                  environment,
                  server_id,
                  redfish_server_conf,
-                 data_server_conf):
+                 data_server_conf,
+                 condition,
+                 sync_group):
         """
         Constructor: create an instance of IPMICollector class.
 
@@ -71,6 +74,12 @@ class RedfishCollector(Thread):
                 "user": Basic authentication user,
                 "pass": Basic authentication password
             }
+
+            :param condition: Synchronisation object between thread
+            :type condition: conditional semaphore
+
+            :param sync_group: Synchronisation group the thread belongs to
+            :type sync_group: string
         """
         Thread.__init__(self)
         self.server_id = server_id
@@ -83,6 +92,8 @@ class RedfishCollector(Thread):
         else:
             self.pod_auth = None
         self.data_server_conf = data_server_conf
+        self.condition = condition
+        self.sync_group = sync_group
         self.running = False
         self.log = logging.getLogger(__name__)
 
@@ -107,7 +118,8 @@ class RedfishCollector(Thread):
         Request to the current thread to stop by the end
         of current loop iteration
         """
-        log_msg = "Stop called for server {}".format(self.server_id)
+        log_msg = "Stop called for server {} of group {}"
+        log_msg = log_msg.format(self.server_id, self.sync_group)
         self.log.debug(log_msg)
         self.running = False
 
@@ -174,6 +186,14 @@ class RedfishCollector(Thread):
         chassis_list = self.load_chassis_list()
         # Iterate for ever, or near....
         while self.running:
+            # In case of synchronized polling between several interfaces
+            # wait upon condition set to perform polling
+            # in case of n chassis, sync_polling_period should be adapted
+            if self.sync_group != "default":
+                self.condition.acquire()
+                self.condition.wait()
+                self.condition.release()
+
             for chassis in chassis_list['Members']:
 
                 try:
@@ -196,16 +216,20 @@ class RedfishCollector(Thread):
                 except Exception:  # pylint: disable=broad-except
                     # No: default case
                     err_text = sys.exc_info()[0]
-                    log_msg = "Error while trying to connect server {} ({}) \
+                    log_msg = "Error while trying to connect server {} in group {} ({}) \
                               for power query: {}"
                     log_msg = log_msg.format(
                         self.server_id,
+                        self.sync_group,
                         self.redfish_server_conf["base_url"],
                         err_text
                     )
                     self.log.debug(traceback.format_exc())
                     self.log.error(err_text)
 
-            time.sleep(self.redfish_server_conf["polling_interval"])
-        log_msg = "Thread for server {} is teminated".format(self.server_id)
+            # only in case of no synchronized polling between interfaces
+            if self.sync_group == "default":
+                time.sleep(self.redfish_server_conf["polling_interval"])
+        log_msg = "Thread for server {} in group{} is teminated"
+        log_msg += log_msg.format(self.server_id, self.sync_group)
         self.log.debug(log_msg)

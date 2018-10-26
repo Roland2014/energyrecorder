@@ -2,7 +2,7 @@
 """Collect power comsumption vi IPMI protocol."""
 # --------------------------------------------------------
 # Module Name : terraHouat  power recording ILO daemon
-# Version : 1.0
+# Version : 1.1
 #
 # Software Name : Open NFV functest
 # Version :
@@ -22,6 +22,7 @@
 # -------------------------------------------------------
 # History     :
 # 1.0.0 - 2017-02-20 : Release of the file
+# 1.1.0 - 2018-10-26 : Add feature to synchronize polling of different threads
 ##
 import logging.config
 import time
@@ -56,7 +57,9 @@ class IPMICollector(Thread):
                  environment,
                  server_id,
                  ipmi_server_conf,
-                 data_server_conf):
+                 data_server_conf,
+                 condition,
+                 sync_group):
         """
         Constructor: create an instance of IPMICollector class.
 
@@ -83,6 +86,12 @@ class IPMICollector(Thread):
                 "user": Basic authentication user,
                 "pass": Basic authentication password
             }
+
+            :param condition: Synchronisation object between thread
+            :type condition: conditional semaphore
+
+            :param sync_group: Synchronisation group the thread belongs to
+            :type sync_group: string
         """
         Thread.__init__(self)
         self.server_id = server_id
@@ -97,6 +106,8 @@ class IPMICollector(Thread):
         else:
             self.pod_auth = None
         self.data_server_conf = data_server_conf
+        self.condition = condition
+        self.sync_group = sync_group
         self.running = False
         self.log = logging.getLogger(__name__)
 
@@ -107,7 +118,8 @@ class IPMICollector(Thread):
         Request to the current thread to stop by the end
         of current loop iteration
         """
-        log_msg = "Stop called for server {}".format(self.server_id)
+        log_msg = "Stop called for server {} of group {}"
+        log_msg = log_msg.format(self.server_id, self.sync_group)
         self.log.debug(log_msg)
         self.running = False
 
@@ -222,8 +234,8 @@ class IPMICollector(Thread):
                     self.log.debug("Wrong sensor: " + sensor)
                     continue
                 else:
-                    log_msg = "IPMI Error while trying to get Power data for %s (%s): "
-                    log_msg += "rc=%d err=%s"
+                    log_msg = "IPMI Error while trying to get Power data"
+                    log_msg += " for %s (%s): rc=%d err=%s"
                     self.log.error(
                         log_msg,
                         self.ipmi_server_conf["id"],
@@ -248,6 +260,12 @@ class IPMICollector(Thread):
             sensors = self.get_sensors(manufacturer)
             self.log.debug("Main thread is starting....")
         while self.running:
+            # In case of synchronized polling between several interfaces
+            # wait upon condition set to perform polling
+            if self.sync_group != "default":
+                self.condition.acquire()
+                self.condition.wait()
+                self.condition.release()
 
             try:
                 power = self.get_power(sensors)
@@ -282,13 +300,16 @@ class IPMICollector(Thread):
                 self.log.debug(traceback.format_exc())
 
                 log_msg = "Error while trying to connect server "
-                log_msg += "{} ({}) for power query: {}"
+                log_msg += "{}  in group {} ({}) for power query: {}"
                 log_msg = log_msg.format(
-                    self.server_id, server_addr, err_text)
+                    self.server_id, self.sync_group, server_addr, err_text)
 
                 self.log.error(log_msg)
                 self.running = False
 
-            time.sleep(self.ipmi_server_conf["polling_interval"])
-        log_msg = "Thread for server {} is teminated".format(self.server_id)
+            # only in case of no synchronized polling between interfaces
+            if self.sync_group == "default":
+                time.sleep(self.ipmi_server_conf["polling_interval"])
+        log_msg = "Thread for server {} in group{} is teminated"
+        log_msg += log_msg.format(self.server_id, self.sync_group)
         self.log.debug(log_msg)

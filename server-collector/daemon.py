@@ -3,7 +3,7 @@
 """data-collector daemon main code."""
 # --------------------------------------------------------
 # Module Name : terraHouat  power recording ILO daemon
-# Version : 1.0
+# Version : 1.1
 #
 # Software Name : Open NFV functest
 # Version :
@@ -23,6 +23,7 @@
 # -------------------------------------------------------
 # History     :
 # 1.0.0 - 2017-02-20 : Release of the file
+# 1.1.0 - 2018-10-26 : Add feature to synchronize polling of different threads
 ##
 import logging.config
 import traceback
@@ -30,6 +31,7 @@ import time
 import signal
 import sys
 import yaml
+import threading
 
 from ilocollector import ILOCollector
 from ilo_gui_collector import ILOGUICollector
@@ -47,6 +49,12 @@ def signal_term_handler():
         LOG.info(msg)
         running_thread.stop()
     LOG.info("Please wait....")
+    if syncpolling_interval != -1:
+        # set condition in order to release thread if there were
+        # waiting to enable them to stop
+        condition.acquire()
+        condition.notifyAll()
+        condition.release()
     for running_thread in SERVER_THREADS:
         running_thread.join()
     LOG.info("Program terminated")
@@ -56,6 +64,11 @@ def signal_term_handler():
 signal.signal(signal.SIGTERM, signal_term_handler)
 # Create running thead list object
 SERVER_THREADS = []
+# Init conditional semaphore to synchronize polling thread
+condition = threading.Condition()
+# -1 means not synchornized polling (default behaviour)
+group_syncpolling_interval = -1
+
 # Configure logging
 logging.config.fileConfig("conf/collector-logging.conf")
 LOG = logging.getLogger(__name__)
@@ -74,110 +87,159 @@ for pod in CONFIG["PODS"]:
     log_msg = log_msg.format(pod["environment"])
     LOG.info(log_msg)
 
-    for server in pod["servers"]:
-        log_msg = "\tStarting thread collector for server {}"
-        log_msg = log_msg.format(server["id"])
-        LOG.info(log_msg)
-        if server["type"] == "ilo":
-            ilo_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
+    for sync_group in pod["syncgroup"]:
+        if sync_group["name"] != "default":
+            syncpolling_interval = sync_group["group_syncpolling_interval"]
+            log_msg = "\tStarting threads with synchronized polling of {}s"
+            log_msg += " for group {}"
+            log_msg = log_msg.format(syncpolling_interval, sync_group["name"])
+            LOG.info(log_msg)
 
-            }
-            collector = ILOCollector(pod["environment"],
-                                     server["id"],
-                                     ilo_server_conf,
-                                     CONFIG["RECORDER_API_SERVER"])
-        elif server["type"] == "ilo-gui":
-            ilo_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
+        for server in sync_group["servers"]:
+            log_msg = "\tStarting thread collector for server {}"
+            log_msg = log_msg.format(server["id"])
+            LOG.info(log_msg)
+            if server["type"] == "ilo":
+                if syncpolling_interval != -1:
+                    log_msg = "Synchronized polling ignored as not supported"
+                    log_msg += " for this connector type"
+                    LOG.info(log_msg)
 
-            }
-            collector = ILOGUICollector(pod["environment"],
-                                        server["id"],
-                                        ilo_server_conf,
-                                        CONFIG["RECORDER_API_SERVER"])
+                ilo_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
 
-        elif server["type"] == "idrac8-gui":
-            idrac_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
-
-            }
-            collector = IDRAC8GUICollector(pod["environment"],
-                                           server["id"],
-                                           idrac_server_conf,
-                                           CONFIG["RECORDER_API_SERVER"])
-
-        elif server["type"] == "intel-gui":
-            intel_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
-
-            }
-            collector = INTELGUICollector(pod["environment"],
-                                          server["id"],
-                                          intel_server_conf,
-                                          CONFIG["RECORDER_API_SERVER"])
-
-        elif server["type"] == "ibmc-gui":
-            ibmc_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
-
-            }
-            collector = IBMCGUICollector(pod["environment"],
+                }
+                collector = ILOCollector(pod["environment"],
                                          server["id"],
-                                         ibmc_server_conf,
+                                         ilo_server_conf,
                                          CONFIG["RECORDER_API_SERVER"])
+            elif server["type"] == "ilo-gui":
+                if syncpolling_interval != -1:
+                    log_msg = "Synchronized polling ignored as not supported"
+                    log_msg += " for this connector type"
+                    LOG.info(log_msg)
 
-        elif server["type"] == "redfish":
-            ilo_server_conf = {
-                "base_url": "https://{}".format(server["host"]),
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
+                ilo_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
 
-            }
-            collector = RedfishCollector(
-                pod["environment"],
-                server["id"],
-                ilo_server_conf,
-                CONFIG["RECORDER_API_SERVER"])
-        elif server["type"] == "ipmi":
-            ipmi_server_conf = {
-                "host": server["host"],
-                "user": server["user"],
-                "pass": server["pass"],
-                "polling_interval": server["polling_interval"]
-            }
+                }
+                collector = ILOGUICollector(pod["environment"],
+                                            server["id"],
+                                            ilo_server_conf,
+                                            CONFIG["RECORDER_API_SERVER"])
 
-            collector = IPMICollector(pod["environment"],
-                                      server["id"],
-                                      ipmi_server_conf,
-                                      CONFIG["RECORDER_API_SERVER"])
-        else:
-            raise Exception(
-                "Unsupported power collect method: {}".format(server["type"]))
+            elif server["type"] == "idrac8-gui":
+                if syncpolling_interval != -1:
+                    log_msg = "Synchronized polling ignored as not supported"
+                    log_msg += " for this connector type"
+                    LOG.info(log_msg)
 
-        SERVER_THREADS.append(collector)
-        collector.start()
+                idrac_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
+
+                }
+                collector = IDRAC8GUICollector(pod["environment"],
+                                               server["id"],
+                                               idrac_server_conf,
+                                               CONFIG["RECORDER_API_SERVER"])
+
+            elif server["type"] == "intel-gui":
+                if syncpolling_interval != -1:
+                    log_msg = "Synchronized polling ignored as not supported"
+                    log_msg += " for this connector type"
+                    LOG.info(log_msg)
+
+                intel_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
+
+                }
+                collector = INTELGUICollector(pod["environment"],
+                                              server["id"],
+                                              intel_server_conf,
+                                              CONFIG["RECORDER_API_SERVER"])
+
+            elif server["type"] == "ibmc-gui":
+                if syncpolling_interval != -1:
+                    log_msg = "Synchronized polling ignored as not supported"
+                    log_msg += " for this connector type"
+                    LOG.info(log_msg)
+
+                ibmc_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
+
+                }
+                collector = IBMCGUICollector(pod["environment"],
+                                             server["id"],
+                                             ibmc_server_conf,
+                                             CONFIG["RECORDER_API_SERVER"])
+
+            elif server["type"] == "redfish":
+                ilo_server_conf = {
+                    "base_url": "https://{}".format(server["host"]),
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
+
+                }
+                collector = RedfishCollector(
+                    pod["environment"],
+                    server["id"],
+                    ilo_server_conf,
+                    CONFIG["RECORDER_API_SERVER"],
+                    condition,
+                    sync_group["name"])
+            elif server["type"] == "ipmi":
+                ipmi_server_conf = {
+                    "host": server["host"],
+                    "user": server["user"],
+                    "pass": server["pass"],
+                    "polling_interval": server["polling_interval"]
+                }
+
+                collector = IPMICollector(pod["environment"],
+                                          server["id"],
+                                          ipmi_server_conf,
+                                          CONFIG["RECORDER_API_SERVER"],
+                                          condition,
+                                          sync_group["name"])
+            else:
+                MSG = "Unsupported power collect method: {}"
+                MSG += MSG.format(server["type"])
+                raise Exception(MSG)
+
+            SERVER_THREADS.append(collector)
+            collector.start()
 
 try:
     while True:
         # Wait for ever unless we receive a SIGTEM (see signal_term_handler)
-        time.sleep(1)
+        if syncpolling_interval != -1:
+            # Synchronized polling
+            LOG.info("Notify all thread to collect")
+
+            condition.acquire()
+            condition.notify_all()
+            condition.release()
+
+            time.sleep(syncpolling_interval)
+        else:
+            # thread autonomous polling without synchronization
+            time.sleep(1)
 except KeyboardInterrupt:
     signal_term_handler()
 except SystemExit:

@@ -6,76 +6,81 @@
 #	ipmi: using impitool. See "grammar" dicionary in ipmicolector.py for supported manufacturer
 PODS:
 - environment: YOUR-SERVER-GROUP-NAME
-  servers:
-	# HP ILO Server (Gen9)
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: ilo
-    user: ilo-user
-    pass: ilo-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  syncgroup:
+  - name: YOUR-SYNCHRO-GROUP-NAME or default for no synchro
+    # synchronized polling interval (seconds) for all servers in the synchro group
+    # bypass polling_interval value except in case group name is default meaning no synchronized polling
+    group_syncpolling_interval: 10
+    servers:
+  	# HP ILO Server (Gen9)
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: ilo
+      user: ilo-user
+      pass: ilo-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-	# HP ILO Server (GUI Hacking, Gen8))
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: ilo-gui
-    user: ilo-user
-    pass: ilo-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  	# HP ILO Server (GUI Hacking, Gen8))
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: ilo-gui
+      user: ilo-user
+      pass: ilo-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-	# DELL IDRAC8 Server (GUI Hacking))
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: idrac8-gui
-    user: idrac-user
-    pass: idrac-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  	# DELL IDRAC8 Server (GUI Hacking))
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: idrac8-gui
+      user: idrac-user
+      pass: idrac-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-	# INTEL Server (GUI Hacking))
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: intel-gui
-    user: web-console-user
-    pass: web-console-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  	# INTEL Server (GUI Hacking))
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: intel-gui
+      user: web-console-user
+      pass: web-console-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-	# HUAWEI iBMC  Server (GUI Hacking))
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: intel-gui
-    user: web-console-user
-    pass: web-console-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  	# HUAWEI iBMC  Server (GUI Hacking))
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: intel-gui
+      user: web-console-user
+      pass: web-console-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-	#redfish server
-  - host: server-ip-or-name[:port]
-	# At your choice
-    id: server-id
-    type: redfish
-    user: redfish-user
-    pass: redfish-user-password
-    #polling internval in seconds
-    polling_interval: 10
+  	#redfish server
+    - host: server-ip-or-name[:port]
+  	# At your choice
+      id: server-id
+      type: redfish
+      user: redfish-user
+      pass: redfish-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
-    #Generic IPMI (see ipmicollector.py to see supported hardware)
-  - host: server-ip-or-name[:bidged-address] # ex 192.168.0.1 or if bidging required 192.168.0.1:0x82
-	# At your choice
-    id: server-id
-    type: ipmi
-    user: ipmi-user
-    pass: ipme-user-password
-    #polling internval in seconds
-    polling_interval: 10
+      #Generic IPMI (see ipmicollector.py to see supported hardware)
+    - host: server-ip-or-name[:bidged-address] # ex 192.168.0.1 or if bidging required 192.168.0.1:0x82
+  	# At your choice
+      id: server-id
+      type: ipmi
+      user: ipmi-user
+      pass: ipme-user-password
+      #polling internval in seconds
+      polling_interval: 10
 
 RECORDER_API_SERVER:
   base_url: http://energy.opnfv.fr
