@@ -5,7 +5,7 @@ RUN apk update;\
     apk add git bash python py-pip ipmitool; \
     pip install --upgrade pip; \
     cd /usr/local;\
-    git clone https://github.com/bherard/energyrecorder;\
+    git clone https://github.com/Roland2014/energyrecorder;\
     cd energyrecorder;\
     pip install -r server-collector/requirements.txt
 
